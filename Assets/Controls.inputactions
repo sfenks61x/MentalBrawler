@@ -1,0 +1,70 @@
+{
+    "name": "Controls",
+    "maps": [
+        {
+            "name": "Player",
+            "id": "1a346e9b-fcb0-4e32-bffd-e5b2913aeb10",
+            "actions": [
+                {
+                    "name": "Move",
+                    "type": "Value",
+                    "id": "5b37f2b2-15b0-4e1e-9f95-75f77c564cf5",
+                    "expectedControlType": "Vector2",
+                    "bindings": [
+                        {
+                            "name": "WASD",
+                            "id": "9e5c78d8-94ea-4690-8fa5-3d92dc7e5fb2",
+                            "path": "2DVector",
+                            "interactions": "",
+                            "processors": "",
+                            "groups": "",
+                            "action": "Move",
+                            "isComposite": true
+                        },
+                        {
+                            "name": "up",
+                            "id": "e9a89325-02e6-45ff-a9ce-6d804ec0e21f",
+                            "path": "<Keyboard>/w",
+                            "action": "Move",
+                            "isPartOfComposite": true
+                        },
+                        {
+                            "name": "down",
+                            "id": "4ae29d6e-8a06-4986-a84a-d4939dcf37c3",
+                            "path": "<Keyboard>/s",
+                            "action": "Move",
+                            "isPartOfComposite": true
+                        },
+                        {
+                            "name": "left",
+                            "id": "7e064ce3-4905-4c35-9ae1-10ae27d1f43f",
+                            "path": "<Keyboard>/a",
+                            "action": "Move",
+                            "isPartOfComposite": true
+                        },
+                        {
+                            "name": "right",
+                            "id": "04f4fc8e-cd33-4fc1-bb3b-cb6e2d7ab569",
+                            "path": "<Keyboard>/d",
+                            "action": "Move",
+                            "isPartOfComposite": true
+                        }
+                    ]
+                },
+                {
+                    "name": "Jump",
+                    "type": "Button",
+                    "id": "9dbe7d4d-97ee-419f-b9d6-bdbab1c014da",
+                    "expectedControlType": "Button",
+                    "bindings": [
+                        {
+                            "path": "<Keyboard>/space",
+                            "action": "Jump"
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "controlSchemes": []
+}
