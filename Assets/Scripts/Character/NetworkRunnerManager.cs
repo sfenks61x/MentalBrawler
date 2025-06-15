@@ -1,130 +1,80 @@
-using System.Collections.Generic;
 using Fusion;
 using Fusion.Sockets;
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 public class NetworkRunnerManager : MonoBehaviour, INetworkRunnerCallbacks
 {
     public NetworkObject playerPrefab;
-
     private NetworkRunner _runner;
 
-    private bool jumpPressedCache = false;
-    private bool punchPressedCache = false;
-    private bool ropePressedCache = false;
-    private bool pullHeldCache = false;
-
-    private async void Start()
+    private void OnGUI()
     {
-        _runner = GetComponent<NetworkRunner>();
-        _runner.ProvideInput = true;
-        _runner.AddCallbacks(this);
-        GameMode mode = Application.isEditor ? GameMode.Host : GameMode.Client;
+        if (_runner == null || _runner.IsRunning == false)
+        {
+            if (GUI.Button(new Rect(10, 10, 250, 40), "Host Olarak Başlat")) StartGame(GameMode.Host);
+            if (GUI.Button(new Rect(10, 60, 250, 40), "Client Olarak Katıl")) StartGame(GameMode.Client);
+        }
+    }
 
+    private async void StartGame(GameMode mode)
+    {
+        _runner = gameObject.AddComponent<NetworkRunner>();
+        _runner.ProvideInput = true;
+        
         await _runner.StartGame(new StartGameArgs()
         {
             GameMode = mode,
-            SessionName = "OyunOdasi",
-            SceneManager = GetComponent<NetworkSceneManagerDefault>()
+            SessionName = "TestOdasi",
+            Scene = NetworkSceneInfo.FromBuildIndex(1),
+            SceneManager = gameObject.AddComponent<NetworkSceneManagerDefault>()
         });
+
+        _runner.AddCallbacks(this); 
     }
-
-    public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
-{
-    Debug.Log($"[JOINED] {player} joined. IsServer: {runner.IsServer} | IsClient: {runner.IsClient}");
-
-    // SADECE SERVER SPAWN EDER → herkes birbirini görsün
-    if (!runner.IsServer) return;
-
-    Vector3 spawnPos = new Vector3(
-        Random.Range(-2f, 2f),
-        0.2f,
-        Random.Range(-2f, 2f)
-    );
-
-    if (playerPrefab != null)
-    {
-        NetworkObject spawnedPlayer = runner.Spawn(
-            playerPrefab,
-            spawnPos,
-            Quaternion.identity,
-            inputAuthority: player
-        );
-
-        if (spawnedPlayer == null)
-        {
-            Debug.LogError("❌ PlayerRoot spawn başarısız! Prefab referansını ve NetworkPrefab tablosunu kontrol et.");
-        }
-        else
-        {
-            Debug.Log($"✅ PlayerRoot başarıyla spawn edildi → PlayerRef: {player}");
-        }
-    }
-    else
-    {
-        Debug.LogWarning("⚠️ Player prefab atanmadı!");
-    }
-}
-
-
+    
     public void OnInput(NetworkRunner runner, NetworkInput input)
     {
-        NetworkInputData inputData = new NetworkInputData();
+        var inputData = new NetworkInputData();
 
         if (Keyboard.current != null)
         {
             Vector2 moveInput = Vector2.zero;
-            if (Keyboard.current.wKey.isPressed) moveInput.y += 1;
-            if (Keyboard.current.sKey.isPressed) moveInput.y -= 1;
-            if (Keyboard.current.aKey.isPressed) moveInput.x -= 1;
-            if (Keyboard.current.dKey.isPressed) moveInput.x += 1;
+            if (Keyboard.current.wKey.isPressed) moveInput.y = 1;
+            if (Keyboard.current.sKey.isPressed) moveInput.y = -1;
+            if (Keyboard.current.aKey.isPressed) moveInput.x = -1;
+            if (Keyboard.current.dKey.isPressed) moveInput.x = 1;
             inputData.move = moveInput;
 
-            if (!jumpPressedCache && Keyboard.current.spaceKey.isPressed)
-            {
-                inputData.jumpRequested = true;
-                jumpPressedCache = true;
-            }
+            inputData.runPressed = Keyboard.current.leftShiftKey.isPressed;
 
-            if (!punchPressedCache && Keyboard.current.qKey.isPressed)
-            {
-                inputData.punchPressed = true;
-                punchPressedCache = true;
-            }
-
-            if (!ropePressedCache && Keyboard.current.eKey.isPressed &&
-                (Mouse.current == null || !Mouse.current.leftButton.isPressed))
-            {
-                inputData.ropePressed = true;
-                ropePressedCache = true;
-            }
+            var buttons = default(NetworkButtons);
+            buttons.Set(PlayerButtons.Jump, Keyboard.current.spaceKey.isPressed);
+            buttons.Set(PlayerButtons.Punch, Keyboard.current.qKey.isPressed);
+            buttons.Set(PlayerButtons.Rope, Keyboard.current.eKey.isPressed);
+            inputData.buttons = buttons;
         }
 
-        if (Mouse.current != null)
-        {
-            bool pressedNow = Mouse.current.leftButton.isPressed;
-
-            if (pressedNow != pullHeldCache)
-            {
-                pullHeldCache = pressedNow;
-            }
-
-            inputData.pullHeld = pullHeldCache;
-        }
+        if (Mouse.current != null) inputData.pullHeld = Mouse.current.leftButton.isPressed;
 
         input.Set(inputData);
     }
-
-    private void LateUpdate()
+    
+    public void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
-        jumpPressedCache = false;
-        punchPressedCache = false;
-        ropePressedCache = false;
+        if (runner.IsServer)
+        {
+            // DÜZELTME: 'Random' belirsizliğini gideriyoruz.
+            Vector3 spawnPos = new Vector3(UnityEngine.Random.Range(-4f, 4f), 1f, UnityEngine.Random.Range(-4f, 4f));
+            runner.Spawn(playerPrefab, spawnPos, Quaternion.identity, player);
+        }
     }
-
-    public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
+    
+    #region Unused Callbacks
     public void OnPlayerLeft(NetworkRunner runner, PlayerRef player) { }
+    public void OnInputMissing(NetworkRunner runner, PlayerRef player, NetworkInput input) { }
     public void OnShutdown(NetworkRunner runner, ShutdownReason shutdownReason) { }
     public void OnConnectedToServer(NetworkRunner runner) { }
     public void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) { }
@@ -133,11 +83,12 @@ public class NetworkRunnerManager : MonoBehaviour, INetworkRunnerCallbacks
     public void OnUserSimulationMessage(NetworkRunner runner, SimulationMessagePtr message) { }
     public void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList) { }
     public void OnCustomAuthenticationResponse(NetworkRunner runner, Dictionary<string, object> data) { }
-    public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key, System.ArraySegment<byte> data) { }
+    public void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken) { }
+    public void OnReliableDataReceived(NetworkRunner runner, PlayerRef player, ReliableKey key, ArraySegment<byte> data) { }
     public void OnReliableDataProgress(NetworkRunner runner, PlayerRef player, ReliableKey key, float progress) { }
     public void OnSceneLoadDone(NetworkRunner runner) { }
     public void OnSceneLoadStart(NetworkRunner runner) { }
     public void OnObjectEnterAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
     public void OnObjectExitAOI(NetworkRunner runner, NetworkObject obj, PlayerRef player) { }
-    public void OnHostMigration(NetworkRunner runner, HostMigrationToken hostMigrationToken) { }
+    #endregion
 }
