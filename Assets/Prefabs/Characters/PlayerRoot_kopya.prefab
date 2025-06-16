@@ -708,7 +708,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ropePrefab: {fileID: 7739354899992456624, guid: ae2d74bcdddc75c44b619e8d9a7ce876, type: 3}
   firePoint: {fileID: 3516096036655062275}
-  fireDelay: 0.3
 --- !u!114 &4163748283329698767
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -725,8 +724,6 @@ MonoBehaviour:
   punchRadius: 1
   punchForce: 15
   upwardForceMultiplier: 1.3
-  punchCooldown: 1.5
-  punchDelay: 0.7
   pullLockDurationAfterPunch: 1
   playerAnimator: {fileID: 1092546580389934331}
 --- !u!114 &1096989650627457824
@@ -763,6 +760,7 @@ MonoBehaviour:
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 8853867673160540431}
+  - {fileID: 314616528920904582}
   - {fileID: 4163748283329698767}
   - {fileID: 1096989650627457824}
   - {fileID: 9072904637363554157}

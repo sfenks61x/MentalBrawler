@@ -1,7 +1,7 @@
 using UnityEngine;
-using System;
+using Fusion;
 
-public class Rope : MonoBehaviour
+public class Rope : NetworkBehaviour
 {
     public float growSpeed = 20f;
     public float maxLength = 20f;
@@ -10,23 +10,19 @@ public class Rope : MonoBehaviour
     public LayerMask hitLayer;
 
     private float currentLength = 0f;
-    private bool hit = false;
-    public event System.Action onRopeEnd;
+
+    [Networked] private bool hit { get; set; }
+    [Networked] private Vector3 pullTarget { get; set; }
 
     public Transform anchor;
     public Transform ropeBody;
 
     private GameObject ropeOwner;
     private GameObject targetToPull;
-    private Vector3 pullTarget;
-
     private Vector3 initialForward;
     private Transform firePoint;
 
-    public GameObject GetTarget()
-    {
-        return targetToPull;
-    }
+    public GameObject GetTarget() => targetToPull;
 
     public void SetFirePoint(Transform fp)
     {
@@ -40,44 +36,35 @@ public class Rope : MonoBehaviour
         ropeOwner = owner;
     }
 
-    void Start()
-    {
-        if (ropeBody != null)
-        {
-            ropeBody.localScale = new Vector3(0.1f, 0.1f, 0.01f);
-        }
-    }
-
-    void Update()
+    public override void FixedUpdateNetwork()
     {
         if (!hit)
         {
             if (firePoint != null)
                 transform.position = firePoint.position;
 
-            float growth = growSpeed * Time.deltaTime;
+            float growth = growSpeed * Runner.DeltaTime;
             currentLength += growth;
 
             if (currentLength >= maxLength)
             {
-                DestroyRope();
+                SelfDestruct();
                 return;
             }
 
             if (ropeBody != null)
-            {
                 ropeBody.localScale += new Vector3(0, 0, growth);
-            }
         }
         else
         {
-            // ✅ Hedef ölmüşse halat otomatik silinsin
+            if (!HasStateAuthority) return;
+
             if (targetToPull != null)
             {
                 if (targetToPull.TryGetComponent<HealthManager>(out var health) && health.IsDead())
                 {
                     Debug.Log("[Rope] Hedef öldü, halat siliniyor.");
-                    DestroyRope();
+                    SelfDestruct();
                     return;
                 }
 
@@ -89,7 +76,7 @@ public class Rope : MonoBehaviour
                     if (distance < 0.5f)
                     {
                         rb.linearVelocity = Vector3.zero;
-                        DestroyRope();
+                        SelfDestruct();
                         return;
                     }
 
@@ -98,49 +85,39 @@ public class Rope : MonoBehaviour
             }
 
             if (ropeBody != null)
-            {
-                ropeBody.localScale = Vector3.Lerp(ropeBody.localScale, Vector3.zero, Time.deltaTime * shrinkSpeed);
-            }
+                ropeBody.localScale = Vector3.Lerp(ropeBody.localScale, Vector3.zero, Runner.DeltaTime * shrinkSpeed);
         }
 
         if (anchor != null && ropeBody != null)
-        {
             anchor.localPosition = new Vector3(0, 0, ropeBody.localScale.z);
-        }
     }
 
-    void OnTriggerEnter(Collider other)
+    // 🛠 HATALI override yerine normal fonksiyon tanımı
+    private void OnTriggerEnter(Collider other)
     {
-        if (((1 << other.gameObject.layer) & hitLayer) != 0 && !hit)
+        if (!HasStateAuthority || hit) return;
+
+        if (((1 << other.gameObject.layer) & hitLayer) == 0)
+            return;
+
+        if (other.gameObject == ropeOwner || other.transform.IsChildOf(ropeOwner.transform))
+            return;
+
+        hit = true;
+        targetToPull = other.gameObject;
+        pullTarget = ropeOwner.transform.position + Vector3.up * 1.0f;
+
+        if (targetToPull.TryGetComponent<HealthManager>(out var health))
         {
-            if (other.gameObject == ropeOwner || other.transform.IsChildOf(ropeOwner.transform))
-            {
-                return;
-            }
-
-            hit = true;
-            targetToPull = other.gameObject;
-            pullTarget = ropeOwner.transform.position + Vector3.up * 1.0f;
-
-            // ✅ Yeni eklenen: Can azaltma çağrısı
-            if (other.TryGetComponent<HealthManager>(out var health))
-            {
-                health.TakeDamage(1);
-            }
+            health.RPC_TakeDamage(1);
         }
     }
 
-    void DestroyRope()
+    void SelfDestruct()
     {
-        if (targetToPull != null && targetToPull.TryGetComponent(out Rigidbody rb))
+        if (Object.HasStateAuthority && Object.IsValid)
         {
-            rb.linearVelocity = Vector3.zero;
+            Runner.Despawn(Object);
         }
-
-        onRopeEnd?.Invoke();
-
-        // Ana halat objesinin kökünü tamamen sil
-        Destroy(transform.root.gameObject);
     }
-
 }

@@ -1,90 +1,103 @@
 using UnityEngine;
 using Fusion;
+using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Animator))]
+[RequireComponent(typeof(RopeSpawner))]
+[RequireComponent(typeof(ObjectPullerWithJoint))]
 public class NetworkPlayerMovement : NetworkBehaviour
 {
     [Header("Hareket Ayarları")]
     public float walkSpeed = 3f;
     public float runSpeed = 6f;
-    public float rotationSpeed = 540f;
+    public float rotationSpeed = 180f;
 
     [Header("Zıplama Ayarları")]
-    public float jumpForce = 8f;
+    public float jumpForce = 5f;
+    public float forwardJumpMultiplier = 1f;
     public float groundCheckDistance = 0.3f;
     public LayerMask groundLayer;
 
     [Header("Referanslar")]
     public Transform groundCheck;
-    
-    private Rigidbody _rb;
-    private Animator _animator;
-    private RopeSpawner _ropeSpawner;
-    private ObjectPullerWithJoint _puller;
+    public Animator animator;
+    public Transform punchPoint;
 
-    [Networked] private NetworkBool IsGrounded { get; set; }
-    [Networked] private float NetworkedSpeedRatio { get; set; } 
+    private Rigidbody rb;
+    private RopeSpawner ropeSpawner;
+    private ObjectPullerWithJoint puller;
+    private NetworkObject netObj;
+
+    private Vector2 moveInput;
+    private bool isGrounded;
+    private bool isRunning;
+    private float smoothSpeed;
 
     public override void Spawned()
     {
-        _rb = GetComponent<Rigidbody>();
-        _animator = GetComponent<Animator>();
-        _ropeSpawner = GetComponent<RopeSpawner>();
-        _puller = GetComponent<ObjectPullerWithJoint>();
+        rb = GetComponent<Rigidbody>();
+        rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-        if (Object.HasInputAuthority)
+        animator = GetComponent<Animator>();
+        ropeSpawner = GetComponent<RopeSpawner>();
+        puller = GetComponent<ObjectPullerWithJoint>();
+
+        netObj = GetComponent<NetworkObject>();
+        puller.myOwner = netObj.HasStateAuthority ? Runner.LocalPlayer : default;
+
+        if (netObj.HasInputAuthority)
         {
             CameraFollow cam = Camera.main.GetComponent<CameraFollow>();
-            if (cam != null) cam.SetTarget(transform);
+            if (cam != null)
+            {
+                cam.SetTarget(transform);
+            }
         }
     }
 
     public override void FixedUpdateNetwork()
     {
-        if (!GetInput(out NetworkInputData data)) return;
-        
-        float speed = data.runPressed ? runSpeed : walkSpeed;
-        Vector3 moveDirection = new Vector3(data.move.x, 0, data.move.y).normalized;
-        
-        // DÜZELTME: Obsolete uyarsını gideriyoruz.
-        _rb.linearVelocity = new Vector3(moveDirection.x * speed, _rb.linearVelocity.y, moveDirection.z * speed);
+        if (!GetInput(out NetworkInputData inputData)) return;
 
-        if (moveDirection != Vector3.zero)
+        moveInput = inputData.move;
+        isRunning = Keyboard.current != null && Keyboard.current.leftShiftKey.isPressed;
+        float speed = isRunning ? runSpeed : walkSpeed;
+
+        Vector3 moveDir = new Vector3(moveInput.x, 0, moveInput.y);
+        moveDir = transform.TransformDirection(moveDir);
+        rb.MovePosition(rb.position + moveDir * speed * Runner.DeltaTime);
+
+        if (HasInputAuthority && moveDir.magnitude > 0.1f)
         {
-            _rb.MoveRotation(Quaternion.RotateTowards(_rb.rotation, Quaternion.LookRotation(moveDirection), rotationSpeed * Runner.DeltaTime));
+            Quaternion rot = Quaternion.LookRotation(moveDir, Vector3.up);
+            Quaternion smoothRot = Quaternion.RotateTowards(transform.rotation, rot, rotationSpeed * Runner.DeltaTime);
+            transform.rotation = smoothRot;
         }
 
-        IsGrounded = Physics.Raycast(groundCheck.position, Vector3.down, groundCheckDistance, groundLayer);
+        Ray ray = new Ray(groundCheck.position, Vector3.down);
+        isGrounded = Physics.Raycast(ray, groundCheckDistance + 0.1f, groundLayer);
 
-        if (IsGrounded && data.buttons.IsSetDown(PlayerButtons.Jump))
+        if (inputData.jumpRequested && isGrounded)
         {
-            _rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            Vector3 jumpDir = rb.transform.forward * forwardJumpMultiplier + Vector3.up;
+            rb.AddForce(jumpDir * jumpForce, ForceMode.Impulse);
         }
-        
-        if (data.buttons.IsSetDown(PlayerButtons.Punch)) RPC_TriggerPunch();
-        if (data.buttons.IsSetDown(PlayerButtons.Rope)) RPC_TriggerRope();
-        
-        // DÜZELTME: Obsolete uyarsını gideriyoruz.
-        NetworkedSpeedRatio = new Vector3(_rb.linearVelocity.x, 0, _rb.linearVelocity.z).magnitude / runSpeed;
-    }
 
-    public override void Render()
-    {
-        _animator.SetFloat("Speed", NetworkedSpeedRatio);
-        _animator.SetBool("IsJumping", !IsGrounded);
+        if (inputData.punchPressed)
+        {
+            animator.SetTrigger("Punch");
+            puller.TryPunch();
+        }
+
+        if (inputData.ropePressed)
+        {
+            ropeSpawner.TriggerFire();
+        }
+
+        smoothSpeed = Mathf.Lerp(smoothSpeed, moveInput.magnitude, Runner.DeltaTime * 10f);
+        animator.SetFloat("Speed", smoothSpeed);
+        animator.SetBool("IsJumping", !isGrounded);
     }
     
-    [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
-    private void RPC_TriggerPunch()
-    {
-        _animator.SetTrigger("Punch");
-        if (_puller != null) _puller.PerformPunch();
-    }
-
-    [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
-    private void RPC_TriggerRope()
-    {
-        if (_ropeSpawner != null) _ropeSpawner.TriggerFire();
-    }
 }

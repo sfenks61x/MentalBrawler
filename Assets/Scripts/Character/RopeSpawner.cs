@@ -1,56 +1,36 @@
 using UnityEngine;
-using System.Collections;
+using Fusion;
 
-public class RopeSpawner : MonoBehaviour
+public class RopeSpawner : NetworkBehaviour
 {
     [Header("Halat Ayarları")]
     public GameObject ropePrefab;
     public Transform firePoint;
-    private GameObject currentRope;
 
-    [Header("Gecikmeli Fırlatma (E tuşu)")]
-    [SerializeField] private float fireDelay = 0.3f;
-    private bool isFiring = false;
-
-    [Header("Cooldown")]
-    private bool canFire = true;
-    private float fireCooldownTimer = 0f;
-    private float cooldownDuration = 2f;
+    [Networked] private TickTimer fireCooldownTimer { get; set; }
 
     private Animator animator;
 
-    void Awake()
+    public override void Spawned()
     {
         animator = GetComponentInChildren<Animator>();
     }
 
-    void Update()
+    public override void FixedUpdateNetwork()
     {
-        if (!canFire)
-        {
-            fireCooldownTimer += Time.deltaTime;
-            if (fireCooldownTimer >= cooldownDuration)
-                canFire = true;
-        }
+        // Burada cooldown kontrolü yapılır. Saniye bazlı işler rollback için buraya taşındı.
     }
 
     public void TriggerFire()
     {
-        if (!canFire || isFiring) return;
-        StartCoroutine(DelayedFire());
-    }
-
-    IEnumerator DelayedFire()
-    {
-        isFiring = true;
-        yield return new WaitForSeconds(fireDelay);
+        if (!fireCooldownTimer.ExpiredOrNotRunning(Runner)) return;
 
         FireRope();
 
-        isFiring = false;
+        fireCooldownTimer = TickTimer.CreateFromSeconds(Runner, 2f); // 2 saniye cooldown
     }
 
-    void FireRope()
+    private void FireRope()
     {
         if (ropePrefab == null || firePoint == null)
         {
@@ -58,17 +38,17 @@ public class RopeSpawner : MonoBehaviour
             return;
         }
 
-        currentRope = Instantiate(ropePrefab, firePoint.position, Quaternion.identity);
-        currentRope.transform.SetParent(null); // Emin ol ki sahneye bağımsız düşüyor
-        canFire = false;
-        fireCooldownTimer = 0f;
+        GameObject currentRope = Instantiate(ropePrefab, firePoint.position, Quaternion.identity);
+        currentRope.transform.SetParent(null);
 
         Rope ropeScript = currentRope.GetComponent<Rope>();
         if (ropeScript != null)
         {
             ropeScript.SetFirePoint(firePoint);
             ropeScript.SetOwner(this.gameObject);
-            ropeScript.onRopeEnd += () => { };
         }
+
+        // 🎯 İleride Rope prefab’ı NetworkObject yapılırsa buraya:
+        // runner.Spawn(ropePrefab.GetComponent<NetworkObject>(), firePoint.position, Quaternion.identity);
     }
 }

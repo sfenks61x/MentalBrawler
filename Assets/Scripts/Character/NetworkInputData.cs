@@ -1,17 +1,11 @@
-using Fusion;
 using UnityEngine;
-
-public enum PlayerButtons
-{
-    Jump,
-    Punch,
-    Rope
-}
+using Fusion;
 
 public struct NetworkInputData : INetworkInput
 {
     public Vector2 move;
-    public NetworkButtons buttons; 
-    public bool runPressed;
+    public bool jumpRequested;
+    public bool punchPressed;
+    public bool ropePressed;
     public bool pullHeld;
 }
